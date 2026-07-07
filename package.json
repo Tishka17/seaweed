@@ -1,0 +1,18 @@
+{
+  "name": "seaweed",
+  "version": "0.1.0",
+  "description": "PlantUML-inspired diagram renderer for the browser using D3 and ELK",
+  "type": "module",
+  "main": "dist/seaweed.js",
+  "scripts": {
+    "test": "node --test",
+    "build": "esbuild src/index.js --bundle --format=iife --global-name=Seaweed --outfile=dist/seaweed.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "dependencies": {
+    "d3": "^7.9.0",
+    "elkjs": "^0.9.0"
+  }
+}

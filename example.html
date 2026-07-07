@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Seaweed Demo</title>
+    <style>
+      :root {
+        --page-padding: clamp(12px, 2.5vw, 24px);
+        --panel-height: clamp(420px, calc(100vh - 164px), 760px);
+        --editor-width: clamp(320px, 34vw, 470px);
+      }
+      body { font-family: Arial, sans-serif; margin: 0; background: #ffffff; color: #333333; overflow-x: hidden; }
+      main { width: min(100% - var(--page-padding) * 2, 1680px); margin: 0 auto; padding: var(--page-padding) 0; }
+      .toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: flex-start; gap: 16px; margin: 0 0 16px; }
+      .toolbar-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+      h1 { font-size: clamp(18px, 2vw, 22px); font-weight: 600; margin: 0; }
+      .subtitle { margin: 6px 0 0; font-size: 13px; color: inherit; opacity: 0.72; }
+      label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: inherit; }
+      select { max-width: min(260px, 100%); font: inherit; padding: 6px 10px; border: 1px solid #c8c8c8; background: white; color: #333; }
+      .workspace { display: grid; grid-template-columns: minmax(420px, 1fr) var(--editor-width); gap: 16px; align-items: stretch; }
+      .diagram-panel, .source-panel { min-width: 0; }
+      .source-panel { display: flex; flex-direction: column; gap: 8px; }
+      .panel-title { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; opacity: 0.75; }
+      #source-editor { flex: 1; min-height: var(--panel-height); max-height: calc(100vh - var(--page-padding) * 2 - 72px); box-sizing: border-box; width: 100%; resize: vertical; padding: 12px; border: 1px solid #d8d8d8; background: white; color: #333; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; tab-size: 2; }
+      #diagram { height: var(--panel-height); min-height: 360px; border: 1px solid #d8d8d8; background: white; overflow: hidden; }
+      #warnings { display: none; margin-top: 12px; padding: 10px 12px; border: 1px solid #d8b75f; background: #fff8df; color: #4b3b11; font-size: 13px; }
+      #warnings ul { margin: 6px 0 0; padding-left: 18px; }
+      #warnings li { margin: 3px 0; }
+      @media (max-width: 1180px) {
+        :root { --panel-height: clamp(380px, 58vh, 620px); }
+        .workspace { grid-template-columns: 1fr; }
+        #source-editor { min-height: clamp(280px, 42vh, 460px); max-height: none; }
+      }
+      @media (max-width: 760px) {
+        .toolbar { grid-template-columns: 1fr; }
+        .toolbar-controls { justify-content: stretch; }
+        .toolbar-controls label { width: 100%; justify-content: space-between; }
+        .toolbar-controls select { flex: 1; max-width: none; min-width: 0; }
+        #diagram { min-height: 340px; }
+      }
+      @media (max-width: 460px) {
+        :root { --page-padding: 10px; --panel-height: 330px; }
+        .toolbar-controls { gap: 8px; }
+        label { align-items: flex-start; flex-direction: column; gap: 4px; }
+        #source-editor { min-height: 280px; font-size: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="toolbar">
+        <div>
+          <h1>PlantUML-like diagrams in HTML</h1>
+          <p id="example-description" class="subtitle"></p>
+        </div>
+        <div class="toolbar-controls">
+          <label>
+            Example
+            <select id="example-select"></select>
+          </label>
+          <label>
+            Theme
+            <select id="theme-select">
+              <option value="default">Default</option>
+              <option value="neutral">Neutral</option>
+              <option value="forest">Forest</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <label>
+            Layout
+            <select id="layout-select">
+              <option value="layered">Layered</option>
+              <option value="mrtree">Tree</option>
+              <option value="stress">Stress</option>
+              <option value="force">Force</option>
+              <option value="radial">Radial</option>
+              <option value="disco">Components</option>
+              <option value="sporeOverlap">Overlap removal</option>
+              <option value="sporeCompaction">Compaction</option>
+              <option value="rectpacking">Rectangle packing</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="workspace">
+        <section class="diagram-panel">
+          <div class="panel-title">Preview</div>
+          <div id="diagram"></div>
+        </section>
+        <section class="source-panel">
+          <div class="panel-title">
+            <span>PlantUML source</span>
+            <span id="render-status"></span>
+          </div>
+          <textarea id="source-editor" spellcheck="false"></textarea>
+        </section>
+      </div>
+      <div id="warnings"></div>
+    </main>
+    <script src="./dist/seaweed.js"></script>
+    <script>
+      const examples = {
+        application: {
+          label: 'Application architecture',
+          description: 'Packages, actor, database, class body, note, cardinality and alt fragment.',
+          layout: 'layered',
+          source: `@startuml
+title Seaweed rendering demo
+left to right direction
+skinparam linetype ortho
+
+package "Core" {
+  actor User
+  [Web App] as App
+  database "Session DB" as DB
+
+  class "Auth Service" as Auth {
+    +login(user, pass)
+    --
+    -token: string
+  }
+}
+
+User --> App : opens
+App --> Auth : authorize
+Auth "1" o-- "*" DB : stores
+Auth ..> App : result
+
+note right of Auth
+  Mermaid-like neutral styling
+  with PlantUML syntax support
+end note
+
+alt successful login
+  App --> User : dashboard
+else failed login
+  App --> User : error
+end
+@enduml`,
+        },
+        sequence: {
+          label: 'Login sequence',
+          description: 'Participants, activation events, grouped branches, divider and multiline note.',
+          layout: 'layered',
+          source: `@startuml
+title Login sequence with retries
+left to right direction
+
+actor User
+participant Browser
+participant "Auth API" as Auth
+database "Session Store" as Store
+
+User -> Browser : enter credentials
+Browser -> Auth : POST /login
+activate Auth
+Auth -> Store : find user
+
+alt valid password
+  Auth -> Store : create session
+  Auth --> Browser : 200 token
+else invalid password
+  Auth --> Browser : 401 error
+  note right of Browser
+    show validation message
+    and keep form data
+  end note
+end
+
+deactivate Auth
+== Redirect ==
+Browser -> User : show dashboard
+@enduml`,
+        },
+        activity: {
+          label: 'Activity workflow',
+          description: 'Activity diagram with start/end nodes, actions and decision branches.',
+          layout: 'layered',
+          source: `@startuml
+title Activity workflow
+start
+:Receive order;
+:Validate payment;
+if (payment valid?) then (yes)
+  :Reserve inventory;
+  :Create shipment;
+else (no)
+  :Notify customer;
+endif
+:Update order status;
+stop
+@enduml`,
+        },
+        stateMachine: {
+          label: 'State machine',
+          description: 'State diagram with initial/final states and labeled transitions.',
+          layout: 'layered',
+          source: `@startuml
+title Order state machine
+left to right direction
+
+[*] --> Draft
+Draft --> Submitted : submit
+Submitted --> Paid : payment accepted
+Submitted --> Cancelled : cancel
+Paid --> Shipped : dispatch
+Shipped --> Delivered : confirm
+Cancelled --> [*]
+Delivered --> [*]
+@enduml`,
+        },
+        usecase: {
+          label: 'Use case map',
+          description: 'Actors, use cases, system boundary and include/extend style dependencies.',
+          layout: 'layered',
+          source: `@startuml
+title Use case map
+left to right direction
+
+actor Customer
+actor Admin
+actor "Payment Provider" as PSP
+
+rectangle "Online Store" {
+  (Browse Catalog) as Browse
+  (Place Order) as Order
+  (Pay Invoice) as Pay
+  (Track Delivery) as Track
+  (Manage Catalog) as ManageCatalog
+  (Refund Payment) as Refund
+}
+
+Customer --> Browse
+Customer --> Order
+Customer --> Track
+Order ..> Pay : <<include>>
+Refund ..> Pay : <<extend>>
+Admin --> ManageCatalog
+Admin --> Refund
+PSP --> Pay : authorizes
+
+note right of Order
+  Use case syntax uses
+  actor and rounded references.
+end note
+@enduml`,
+        },
+        domain: {
+          label: 'Domain model',
+          description: 'Class-like nodes, interface, enum, object, composition and dependency arrows.',
+          layout: 'mrtree',
+          source: `@startuml
+title Order domain model
+left to right direction
+
+namespace "Commerce" {
+  class Order {
+    +submit()
+    +cancel()
+    --
+    -status: OrderStatus
+    -total: Money
+  }
+
+  class OrderLine {
+    +quantity: int
+    +price: Money
+  }
+
+  interface PaymentGateway {
+    +authorize(order)
+  }
+
+  enum OrderStatus {
+    Draft
+    Paid
+    Cancelled
+  }
+
+  object "Tax Policy" as TaxPolicy
+}
+
+Order "1" *-- "*" OrderLine : contains
+Order --> OrderStatus : has status
+Order ..> PaymentGateway : charges
+OrderLine ..> TaxPolicy : calculates tax
+@enduml`,
+        },
+        objectSnapshot: {
+          label: 'Object snapshot',
+          description: 'Runtime object graph with object declarations, fields and links.',
+          layout: 'mrtree',
+          source: `@startuml
+title Object snapshot
+left to right direction
+
+object "cart: ShoppingCart" as Cart {
+  id = C-1042
+  total = 84.20
+}
+
+object "alice: Customer" as Alice {
+  email = alice@example.test
+}
+
+object "line1: CartLine" as Line1 {
+  sku = BOOK-1
+  qty = 1
+}
+
+object "line2: CartLine" as Line2 {
+  sku = PEN-9
+  qty = 3
+}
+
+object "coupon: Discount" as Coupon {
+  code = SPRING
+}
+
+Alice --> Cart : owns
+Cart "1" *-- "*" Line1 : contains
+Cart "1" *-- "*" Line2 : contains
+Cart ..> Coupon : applies
+@enduml`,
+        },
+        components: {
+          label: 'Component diagram',
+          description: 'Components, interfaces, queues and external systems.',
+          layout: 'layered',
+          source: `@startuml
+title Component integration
+left to right direction
+skinparam linetype ortho
+
+package "Client Apps" {
+  [Web Portal] as Web
+  [Mobile App] as Mobile
+}
+
+package "Platform" {
+  component "API Gateway" as Gateway
+  component "Identity Service" as Identity
+  component "Order Service" as Orders
+  component "Notification Service" as Notifications
+  queue "Domain Events" as Events
+}
+
+interface "OAuth2" as OAuth
+database "Orders DB" as OrdersDb
+cloud "Email Provider" as Email
+
+Web --> Gateway : REST
+Mobile --> Gateway : REST
+Gateway ..> OAuth : authenticates
+Gateway --> Identity
+Gateway --> Orders
+Orders --> OrdersDb : writes
+Orders --> Events : publishes
+Notifications --> Events : consumes
+Notifications --> Email : sends
+@enduml`,
+        },
+        deployment: {
+          label: 'Deployment view',
+          description: 'Nested infrastructure containers with cloud, node, frame, components and databases.',
+          layout: 'layered',
+          source: `@startuml
+title Deployment topology
+left to right direction
+skinparam linetype ortho
+
+cloud "Internet" {
+  actor Customer
+}
+
+node "Kubernetes Cluster" {
+  frame "Edge" {
+    [Ingress] as Ingress
+    [API Gateway] as Gateway
+  }
+
+  package "Services" {
+    [Catalog Service] as Catalog
+    [Checkout Service] as Checkout
+    [Notification Worker] as Worker
+  }
+}
+
+database "PostgreSQL" as Postgres
+database "Redis Cache" as Redis
+
+Customer --> Ingress : HTTPS
+Ingress --> Gateway : route
+Gateway --> Catalog : browse
+Gateway --> Checkout : purchase
+Checkout --> Postgres : orders
+Catalog --> Redis : cache
+Checkout ..> Worker : publish event
+
+note right of Worker
+  async email and webhook
+  delivery happens here
+end note
+@enduml`,
+        },
+        dataPipeline: {
+          label: 'Data pipeline',
+          description: 'Queues, collections, storage and processing agents.',
+          layout: 'layered',
+          source: `@startuml
+title Data pipeline
+left to right direction
+skinparam linetype ortho
+
+agent "Web SDK" as SDK
+queue "Kafka Topic" as Topic
+collections "Raw Events" as Raw
+control "Stream Processor" as Processor
+storage "Feature Store" as Features
+database "Warehouse" as Warehouse
+card "Dashboard" as Dashboard
+
+SDK --> Topic : events
+Topic --> Raw : archive
+Topic --> Processor : stream
+Processor --> Features : enrich
+Processor --> Warehouse : aggregate
+Warehouse --> Dashboard : metrics
+Features ..> Dashboard : cohorts
+
+note over Processor
+  Demonstrates non-class entity kinds:
+  queue, collections, control,
+  storage, agent and card.
+end note
+@enduml`,
+        },
+        workflow: {
+          label: 'Workflow flow',
+          description: 'Activity/state-like flow using supported labels, cards and hexagons.',
+          layout: 'layered',
+          source: `@startuml
+title Moderation workflow
+left to right direction
+
+label "New submission" as NewSubmission
+card "Validate content" as Validate
+hexagon "Policy decision" as Decision
+card "Publish" as Publish
+card "Request changes" as Changes
+card "Reject" as Reject
+label "Done" as Done
+
+NewSubmission --> Validate : received
+Validate --> Decision : checks passed
+Decision --> Publish : approved
+Decision --> Changes : needs edits
+Decision --> Reject : blocked
+Changes --> Validate : resubmit
+Publish --> Done
+Reject --> Done
+
+note right of Decision
+  This is a flow-style diagram
+  built from currently supported
+  PlantUML-like node types.
+end note
+@enduml`,
+        },
+        filesArtifacts: {
+          label: 'Files and artifacts',
+          description: 'Folder, file, artifact, storage and dependency relationships.',
+          layout: 'mrtree',
+          source: `@startuml
+title Build artifacts
+left to right direction
+
+folder "Repository" {
+  file "package.json" as PackageJson
+  file "src/index.js" as Entry
+  file "README.md" as Readme
+}
+
+artifact "dist/seaweed.js" as Bundle
+artifact "npm package" as Package
+storage "Browser cache" as Cache
+cloud "CDN" as CDN
+
+PackageJson --> Entry : declares
+Entry --> Bundle : bundled by esbuild
+Readme ..> Package : docs
+Bundle --> Package : included
+Package --> CDN : published
+CDN --> Cache : cached
+@enduml`,
+        },
+        dense: {
+          label: 'Dense service mesh',
+          description: 'Many nearby arrows to exercise spacing, labels, cardinalities and rerouting.',
+          layout: 'stress',
+          source: `@startuml
+title Dense service mesh
+left to right direction
+
+rectangle "Frontend" {
+  [Web] as Web
+  [Mobile] as Mobile
+}
+
+rectangle "Backend" {
+  [Gateway] as Gateway
+  [Identity] as Identity
+  [Billing] as Billing
+  [Search] as Search
+  [Reports] as Reports
+}
+
+database "User DB" as UserDb
+database "Billing DB" as BillingDb
+
+Web --> Gateway : API
+Mobile --> Gateway : API
+Gateway --> Identity : auth
+Gateway --> Billing : invoices
+Gateway --> Search : query
+Gateway --> Reports : export
+Identity "1" o-- "*" UserDb : stores
+Billing "1" o-- "*" BillingDb : stores
+Billing ..> Identity : permissions
+Reports ..> Billing : totals
+Reports ..> Search : filters
+Search ..> UserDb : index
+@enduml`,
+        },
+        radial: {
+          label: 'Knowledge map',
+          description: 'Hub-and-spoke graph for radial and force layouts.',
+          layout: 'radial',
+          source: `@startuml
+title Product discovery map
+
+[Product Vision] as Vision
+[User Interviews] as Interviews
+[Analytics] as Analytics
+[Prototype] as Prototype
+[Roadmap] as Roadmap
+[Architecture] as Architecture
+[Risks] as Risks
+[Launch Plan] as Launch
+
+Vision --> Interviews : validates
+Vision --> Analytics : measures
+Vision --> Prototype : shapes
+Vision --> Roadmap : prioritizes
+Vision --> Architecture : constrains
+Vision --> Risks : tracks
+Roadmap --> Launch : prepares
+Prototype ..> Interviews : feedback
+Analytics ..> Roadmap : evidence
+Risks ..> Launch : mitigations
+@enduml`,
+        },
+      };
+
+      const diagramElement = document.getElementById('diagram');
+      const warningsElement = document.getElementById('warnings');
+      const sourceEditor = document.getElementById('source-editor');
+      const renderStatus = document.getElementById('render-status');
+      const exampleDescription = document.getElementById('example-description');
+      const exampleSelect = document.getElementById('example-select');
+      const themeSelect = document.getElementById('theme-select');
+      const layoutSelect = document.getElementById('layout-select');
+
+      Object.entries(examples).forEach(([id, example]) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = example.label;
+        exampleSelect.appendChild(option);
+      });
+
+      const renderer = new window.Seaweed.PlantUMLRenderer(diagramElement, {
+        theme: themeSelect.value,
+        layoutAlgorithm: layoutSelect.value,
+      });
+
+      function applyTheme(themeName) {
+        const theme = window.Seaweed.THEMES[themeName];
+        document.body.style.background = theme.background;
+        document.body.style.color = theme.text;
+        diagramElement.style.background = theme.background;
+        diagramElement.style.borderColor = theme.groupStroke;
+        exampleSelect.style.background = theme.background;
+        exampleSelect.style.color = theme.text;
+        exampleSelect.style.borderColor = theme.groupStroke;
+        themeSelect.style.background = theme.background;
+        themeSelect.style.color = theme.text;
+        themeSelect.style.borderColor = theme.groupStroke;
+        layoutSelect.style.background = theme.background;
+        layoutSelect.style.color = theme.text;
+        layoutSelect.style.borderColor = theme.groupStroke;
+        sourceEditor.style.background = theme.background;
+        sourceEditor.style.color = theme.text;
+        sourceEditor.style.borderColor = theme.groupStroke;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function renderWarnings(warnings) {
+        if (!warnings || warnings.length === 0) {
+          warningsElement.style.display = 'none';
+          warningsElement.innerHTML = '';
+          return;
+        }
+
+        warningsElement.style.display = 'block';
+        warningsElement.innerHTML = [
+          '<strong>PlantUML compatibility warnings</strong>',
+          '<ul>',
+          ...warnings.map((warning) => `<li>Line ${warning.lineNumber || '?'}: ${escapeHtml(warning.message)} <code>${escapeHtml(warning.raw || '')}</code></li>`),
+          '</ul>',
+        ].join('');
+      }
+
+      async function renderDiagram() {
+        const example = examples[exampleSelect.value];
+        exampleDescription.textContent = example.description;
+        renderer.setTheme(themeSelect.value);
+        renderer.setLayoutAlgorithm(layoutSelect.value);
+        renderStatus.textContent = 'Rendering...';
+        const diagram = await renderer.render(sourceEditor.value);
+        renderStatus.textContent = diagram.warnings?.length ? `${diagram.warnings.length} warning(s)` : 'Rendered';
+        renderWarnings(diagram.warnings);
+      }
+
+      function debounce(callback, delay) {
+        let timer = null;
+        return (...args) => {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(() => callback(...args), delay);
+        };
+      }
+
+      const renderEditedSource = debounce(renderDiagram, 250);
+
+      exampleSelect.addEventListener('change', () => {
+        const example = examples[exampleSelect.value];
+        layoutSelect.value = example.layout;
+        sourceEditor.value = example.source;
+        renderDiagram();
+      });
+
+      themeSelect.addEventListener('change', () => {
+        applyTheme(themeSelect.value);
+        renderDiagram();
+      });
+
+      layoutSelect.addEventListener('change', () => {
+        renderDiagram();
+      });
+
+      sourceEditor.addEventListener('input', () => {
+        renderStatus.textContent = 'Edited';
+        renderEditedSource();
+      });
+
+      applyTheme(themeSelect.value);
+      layoutSelect.value = examples[exampleSelect.value].layout;
+      sourceEditor.value = examples[exampleSelect.value].source;
+      renderDiagram();
+    </script>
+  </body>
+</html>
